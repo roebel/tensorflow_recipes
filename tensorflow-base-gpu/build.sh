@@ -6,7 +6,16 @@ set -vex
 sed -i -e "s:\${PREFIX}:${PREFIX}:" tensorflow/core/platform/default/build_config/BUILD
 
 mkdir -p ./bazel_output_base
-export BAZEL_OPTS="--batch "
+# avoid warning for --batch deprecated
+#export BAZEL_OPTS="--batch "
+
+# avoid problems with bazel install on NFS
+export TEST_TMPDIR=/data/anasynth_nonbp/roebel/tensorflow_devel/bazel_for_conda
+# use nvcc from users install of cuda
+export PATH=$PATH:/data/anasynth/cuda-9.0/bin
+echo $PATH
+# avoid warning about undefined TMP
+export TMP=/tmp/roebel/bazel_compile
 
 # Compile tensorflow from source
 export PYTHON_BIN_PATH=${PYTHON}
@@ -16,9 +25,13 @@ export USE_DEFAULT_PYTHON_LIB_PATH=1
 # additional settings
 # do not build with MKL support
 export TF_NEED_MKL=0
-export CC_OPT_FLAGS="-march=nocona -mtune=haswell"
+# optimize for local architecture
+# export CC_OPT_FLAGS="-march=nocona -mtune=haswell"
+export CC_OPT_FLAGS="-march=native"
 export TF_NEED_IGNITE=1
-export TF_ENABLE_XLA=1
+# disable XLA (which is experimental)
+# export TF_ENABLE_XLA=1
+export TF_ENABLE_XLA=0
 export TF_NEED_OPENCL=0
 export TF_NEED_OPENCL_SYCL=0
 export TF_NEED_ROCM=0
@@ -45,7 +58,9 @@ if [ ${cudatoolkit} == "8.0" ]; then
     export TF_CUDA_COMPUTE_CAPABILITIES="3.0,3.5,5.2,6.0,6.1"
 fi
 if [ ${cudatoolkit} == "9.0" ]; then
-    export TF_CUDA_COMPUTE_CAPABILITIES="3.0,3.5,5.2,6.0,6.1,7.0"
+    # do not spend time compiling for unused compute capabilities
+    # export TF_CUDA_COMPUTE_CAPABILITIES="3.0,3.5,5.2,6.0,6.1,7.0"
+    export TF_CUDA_COMPUTE_CAPABILITIES="6.1,6.1,6.1"
 fi
 if [ ${cudatoolkit} == "9.2" ]; then
     export TF_CUDA_COMPUTE_CAPABILITIES="3.0,3.5,5.2,6.0,6.1,7.0"
@@ -54,14 +69,19 @@ export TF_NCCL_VERSION="1.3"
 export GCC_HOST_COMPILER_PATH="${CC}"
 # Use system paths here rather than $PREFIX to allow Bazel to find the correct
 # libraries.  RPATH is adjusted post build to link to the DSOs in $PREFIX
-export CUDA_TOOLKIT_PATH="/usr/local/cuda"
-export CUDNN_INSTALL_PATH="/usr/local/cuda/"
+# use non-std install location for cuda and cudnn
+#export CUDA_TOOLKIT_PATH="/usr/local/cuda"
+#export CUDNN_INSTALL_PATH="/usr/local/cuda/"
+export CUDA_TOOLKIT_PATH="/data/anasynth/cuda-9.0/"
+export CUDNN_INSTALL_PATH="/data/anasynth/cuda"
 
 # libcuda.so.1 needs to be symlinked to libcuda.so
 # ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1
 # on a "real" system the so.1 library is typically in /usr/local/nvidia/lib64
 # add the stubs directory to LD_LIBRARY_PATH so libcuda.so.1 can be found
-export LD_LIBRARY_PATH="/usr/local/cuda/lib64/stubs/:${LD_LIBRARY_PATH}"
+# export LD_LIBRARY_PATH="/usr/local/cuda/lib64/stubs/:${LD_LIBRARY_PATH}"
+# is this necessary ??
+export LD_LIBRARY_PATH="${CUDA_TOOLKIT_PATH}/lib64:${CUDNN_INSTALL_PATH}/lib64:${CUDA_TOOLKIT_PATH}/lib64/stubs/:${LD_LIBRARY_PATH}"
 
 ./configure
 
@@ -71,9 +91,13 @@ export LD_LIBRARY_PATH="/usr/local/cuda/lib64/stubs/:${LD_LIBRARY_PATH}"
 #   --subcommands \
 # jobs can be used to limit parallel builds and reduce resource needs
 #    --jobs=20             \
+#
+# optimize for local machine
+#-    --copt=-march=nocona \
+#-    --copt=-mtune=haswell \
+# add rpath-link flags to non std cuda install directories, without those building fails
 bazel ${BAZEL_OPTS} build \
-    --copt=-march=nocona \
-    --copt=-mtune=haswell \
+    --copt=-march=native \
     --copt=-ftree-vectorize \
     --copt=-fPIC \
     --copt=-fstack-protector-strong \
@@ -83,12 +107,17 @@ bazel ${BAZEL_OPTS} build \
     --linkopt=-zrelro \
     --linkopt=-znow \
     --linkopt="-L${PREFIX}/lib" \
+    --linkopt="-Wl,-rpath-link,${CUDA_TOOLKIT_PATH}/lib64" \
+    --linkopt="-Wl,-rpath-link,${CUDNN_INSTALL_PATH}/lib64" \
+    --host_linkopt="-Wl,-rpath-link,${CUDA_TOOLKIT_PATH}/lib64" \
+    --host_linkopt="-Wl,-rpath-link,${CUDA_TOOLKIT_PATH}/lib64/stubs" \
+    --host_linkopt="-Wl,-rpath-link,${CUDNN_INSTALL_PATH}/lib64" \
     --verbose_failures \
     --config=opt \
     --config=cuda \
     --color=yes \
     --curses=no \
-    //tensorflow/tools/pip_package:build_pip_package
+    //tensorflow/tools/pip_package:build_pip_package 2>&1 | tee build.log
 
 # build a whl file
 mkdir -p $SRC_DIR/tensorflow_pkg
