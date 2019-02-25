@@ -4,13 +4,14 @@ tflow_variant:
 # cuda 9.0, gcc 5.4, cudnn 7.1
 # cuda 9.2, gcc 7.2, cudnn 7.2
 c_compiler_version:    # [linux]
-  - 7.2                # [linux]
+  - 5.4                # [linux]
 cxx_compiler_version:  # [linux]
-  - 7.2                # [linux]
+  - 5.4                # [linux]
 cudatoolkit:
-  - 9.2
+  - 9.0
 cudnn:
-  - 7.2
+  - 7.3
+
+#- 2.7  # [not win]
 python:
-  - 2.7  # [not win]
   - 3.6
