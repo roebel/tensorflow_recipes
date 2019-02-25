@@ -41,7 +41,7 @@ requirements:
     - {{ compiler('cxx') }}
   host:
     # conda build requirements
-    - bazel >=0.15.0
+    - bazel =0.15.2
     - posix  # [win]
     - m2-patch  # [win]
     - pip
