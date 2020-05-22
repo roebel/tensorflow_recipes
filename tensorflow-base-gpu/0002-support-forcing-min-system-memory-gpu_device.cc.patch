@@ -1,0 +1,77 @@
+--- ./tensorflow/core/common_runtime/gpu/gpu_device_ori.cc	2020-05-21 11:39:45.539690315 +0200
++++ ./tensorflow/core/common_runtime/gpu/gpu_device.cc	2020-05-21 15:35:25.978901533 +0200
+@@ -15,6 +15,8 @@
+ 
+ // TODO(opensource): Use a more generic sounding preprocessor name than
+ // GOOGLE_CUDA
++//AXEL ensure getenv is available
++#include <stdlib.h>
+ #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
+ 
+@@ -809,30 +811,48 @@
+   //
+   // In the future we could be more sophisticated by using a table of devices.
+   int64 min_system_memory;
+-  if (available_memory < (1LL << 31)) {
+-    // 225MiB
+-    min_system_memory = 225 * 1024 * 1024;
+-  } else {
+-    // max(300 MiB, 0.05 * available_memory)
+-    min_system_memory =
++  int64 forced_system_memory = 0;
++  const char* force_min_system_memory_mb = getenv("TF_FORCE_MIN_SYSTEM_MEMORY_MB");
++  LOG(INFO) << "MinSystemMemory: available_memory::" << available_memory <<"\n";
++  if ( force_min_system_memory_mb){
++    forced_system_memory = strtol(force_min_system_memory_mb, NULL, 10) * 1024 * 1024;
++    if (forced_system_memory> 0)
++      LOG(INFO) << "MinSystemMemory: forced_system_memory::" << forced_system_memory <<"\n";
++    else
++      LOG(INFO) << "MinSystemMemory: forced_system_memory is not a positive number and will therefore not be used \n";
++  }
++
++  if (forced_system_memory){
++      min_system_memory = forced_system_memory;
++  }
++  else{
++    if (available_memory < (1LL << 31)) {
++      // 225MiB
++      min_system_memory = 225 * 1024 * 1024;
++    } else {
++      // max(300 MiB, 0.05 * available_memory)
++      min_system_memory =
+         std::max(int64{314572800}, static_cast<int64>(available_memory * 0.05));
+-  }
++    }
+ #if defined(__GNUC__) && defined(__OPTIMIZE__)
+-// Do nothing
++    // Do nothing
+ #elif !defined(__GNUC__) && defined(NDEBUG)
+-// Do nothing
++    // Do nothing
+ #else
+-  // Double the amount of available GPU memory in non-opt builds (debug
+-  // builds in windows); because in non-opt builds more system memory
+-  // is necessary.
+-  min_system_memory *= 2;
++    // Double the amount of available GPU memory in non-opt builds (debug
++    // builds in windows); because in non-opt builds more system memory
++    // is necessary.
++    min_system_memory *= 2;
+ #endif
+-
+ #if defined(ANDROID_TEGRA)
+-  // 1GB system mem for NVIDIA Tegra devices since they use the same mem for
+-  // RAM and Video RAM
+-  min_system_memory = 1 << 30;
++    // 1GB system mem for NVIDIA Tegra devices since they use the same mem for
++    // RAM and Video RAM
++    min_system_memory = 1 << 30;
+ #endif
++  }
++
++  LOG(INFO) << "MinSystemMemory: selected min_system_memory::" << min_system_memory <<"\n";
++
+   return min_system_memory;
+ }
+ 
