@@ -12,6 +12,14 @@ cp $RECIPE_DIR/nccl_archive.patch third_party/nccl/archive.patch
 mkdir -p ./bazel_output_base
 export BAZEL_OPTS=""
 
+# avoid problems with bazel install on NFS
+export TEST_TMPDIR=/data/anasynth_nonbp/roebel/tensorflow_devel/bazel_for_conda
+# use nvcc from users install of cuda
+export PATH=$PATH:/data/anasynth/cuda-10.1/bin
+echo $PATH
+# avoid warning about undefined TMP
+export TMP=/tmp/roebel/bazel_compile
+
 # Compile tensorflow from source
 export PYTHON_BIN_PATH=${PYTHON}
 export PYTHON_LIB_PATH=${SP_DIR}
@@ -51,7 +59,15 @@ export TF_NCCL_VERSION=""
 export GCC_HOST_COMPILER_PATH="${CC}"
 # Use system paths here rather than $PREFIX to allow Bazel to find the correct
 # libraries.  RPATH is adjusted post build to link to the DSOs in $PREFIX
-export TF_CUDA_PATHS="${PREFIX},/usr/local/cuda,/usr"
+
+# use non-std install location for cuda and cudnn
+#export CUDA_TOOLKIT_PATH="/usr/local/cuda"
+#export CUDNN_INSTALL_PATH="/usr/local/cuda/"
+export CUDA_TOOLKIT_PATH="/data/anasynth/cuda-10.1/"
+export CUDNN_INSTALL_PATH="/data/anasynth/cuda"
+
+export TF_CUDA_PATHS="${PREFIX},${CUDA_TOOLKIT_PATH},${CUDNN_INSTALL_PATH}"
+
 
 ./configure
 
@@ -73,6 +89,11 @@ bazel ${BAZEL_OPTS} build \
     --linkopt=-zrelro \
     --linkopt=-znow \
     --linkopt="-L${PREFIX}/lib" \
+    --linkopt="-Wl,-rpath-link,${CUDA_TOOLKIT_PATH}/lib64" \
+    --linkopt="-Wl,-rpath-link,${CUDNN_INSTALL_PATH}/lib64" \
+    --host_linkopt="-Wl,-rpath-link,${CUDA_TOOLKIT_PATH}/lib64" \
+    --host_linkopt="-Wl,-rpath-link,${CUDA_TOOLKIT_PATH}/lib64/stubs" \
+    --host_linkopt="-Wl,-rpath-link,${CUDNN_INSTALL_PATH}/lib64" \
     --verbose_failures \
     --config=opt \
     --config=cuda \
